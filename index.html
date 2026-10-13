@@ -3,6 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<script>
+  // Light or dark: the visitor's own choice (from the switch in the header) if they made one,
+  // otherwise their device's setting. Applied before the page paints so it never flickers.
+  try {
+    var savedTheme = localStorage.getItem("bartali-theme");
+    if (savedTheme === "light" || savedTheme === "dark") document.documentElement.setAttribute("data-theme", savedTheme);
+  } catch (e) { /* storage blocked: follow the device */ }
+</script>
 <title>אירועי שיא · ברטלי</title>
 <meta name="description" content="מפת המסלולים של אירועי השיא במרכזי הרכיבה של ברטלי: סינון לפי מרכז, קבוצה, רמה ועונה, ופרטי כל מסלול.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,21 +22,27 @@
 /* Layout: the event index is docked on the right (RTL start) and the map fills the rest.
    Choosing an event opens its route sheet over the index; the elevation profile docks under the map. */
 :root {
-  --paper: #F2F4F1;
+  /* Light: Bartali "Youth in Movement" — navy, cream, coral, blue, peach, mauve */
+  --paper: #F4F6F8;
   --surface: #FFFFFF;
-  --sunk: #E8EDEA;
-  --ink: #14292D;
-  --muted: #5B6E71;
-  --line: #D4DCD8;
-  --teal: #0E5A63;
-  --on-teal: #FFFFFF;
-  --teal-soft: #DCEBE9;
-  --coral: #E04B28;
-  --coral-soft: #FBE2D9;
+  --sunk: #E8EEF3;
+  --ink: #0B2D45;
+  --muted: #6A6072;
+  --line: #D8E0E7;
+  --teal: #01426A;          /* primary accent: buttons, links, selected chips */
+  --on-teal: #F1E6B2;
+  --teal-soft: #E3EEF9;
+  --coral: #FF7276;
+  --on-coral: #0B2D45;
+  --coral-soft: #FFE5E3;
+  --focus: #3D8FDE;
   --easy: #2E8B57;
-  --mid: #2C63C6;
-  --hard: #1E2427;
-  --shadow: 0 1px 2px rgb(20 41 45 / .08), 0 10px 28px rgb(20 41 45 / .12);
+  --mid: #3D8FDE;
+  --hard: #0B2D45;
+  --brand-bg: #01426A;      /* the header band, like the logo */
+  --brand-ink: #F1E6B2;
+  --s1: #3D8FDE; --s2: #FF7276; --s3: #EBB28C; --s4: #7F7384; --s5: #F1E6B2;
+  --shadow: 0 1px 2px rgb(1 66 106 / .08), 0 10px 28px rgb(1 66 106 / .12);
   --f-display: "Secular One", "Arial Hebrew", "Noto Sans Hebrew", sans-serif;
   --f-body: "IBM Plex Sans Hebrew", "Arial Hebrew", "Noto Sans Hebrew", system-ui, sans-serif;
   --f-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -35,19 +50,24 @@
   --side-w: 420px;
   color-scheme: light;
 }
+/* Dark: Bartali "Youth Leadership School" — deep navy, cream, pink, crimson, magenta, maroon, blue */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #0E191B; --surface: #142427; --sunk: #1A2E31; --ink: #E4ECEA; --muted: #93A7A8; --line: #263B3E;
-    --teal: #4DB6BC; --on-teal: #0E191B; --teal-soft: #183A3D; --coral: #FF7652; --coral-soft: #3A2019;
-    --easy: #5CC48A; --mid: #74A0F2; --hard: #D4DCDD;
+    --paper: #00263A; --surface: #032F47; --sunk: #073A55; --ink: #F3EBC9; --muted: #A8B6C4; --line: #12465F;
+    --teal: #F59BBB; --on-teal: #00263A; --teal-soft: #282E5E; --coral: #BF0D3E; --on-coral: #F1E6B2; --coral-soft: #3B1A2E;
+    --focus: #F59BBB; --easy: #5CC48A; --mid: #3D8FDE; --hard: #F1E6B2;
+    --brand-bg: #001B2A; --brand-ink: #F1E6B2;
+    --s1: #3D8FDE; --s2: #BF0D3E; --s3: #BB29BB; --s4: #8A2235; --s5: #F59BBB;
     --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px rgb(0 0 0 / .4);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --paper: #0E191B; --surface: #142427; --sunk: #1A2E31; --ink: #E4ECEA; --muted: #93A7A8; --line: #263B3E;
-  --teal: #4DB6BC; --on-teal: #0E191B; --teal-soft: #183A3D; --coral: #FF7652; --coral-soft: #3A2019;
-  --easy: #5CC48A; --mid: #74A0F2; --hard: #D4DCDD;
+  --paper: #00263A; --surface: #032F47; --sunk: #073A55; --ink: #F3EBC9; --muted: #A8B6C4; --line: #12465F;
+  --teal: #F59BBB; --on-teal: #00263A; --teal-soft: #282E5E; --coral: #BF0D3E; --on-coral: #F1E6B2; --coral-soft: #3B1A2E;
+  --focus: #F59BBB; --easy: #5CC48A; --mid: #3D8FDE; --hard: #F1E6B2;
+  --brand-bg: #001B2A; --brand-ink: #F1E6B2;
+  --s1: #3D8FDE; --s2: #BF0D3E; --s3: #BB29BB; --s4: #8A2235; --s5: #F59BBB;
   --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px rgb(0 0 0 / .4);
   color-scheme: dark;
 }
@@ -64,7 +84,7 @@ body {
 [hidden] { display: none !important; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
-:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
 
 /* ── Shell ── */
@@ -89,18 +109,43 @@ button { cursor: pointer; }
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 18px 20px 14px;
-  border-bottom: 1px solid var(--line);
+  gap: 14px;
+  padding: 18px 20px 16px;
+  background: var(--brand-bg);
+  color: var(--brand-ink);
 }
-.mark { display: flex; gap: 3px; height: 40px; }
-.mark i { display: block; width: 5px; border-radius: 3px; }
-.mark i:nth-child(1) { background: var(--coral); }
-.mark i:nth-child(2) { background: #F2A0B4; }
-.mark i:nth-child(3) { background: var(--teal); }
-.mark i:nth-child(4) { background: #E9C46A; }
-.eyebrow { margin: 0; color: var(--muted); font-size: 12.5px; letter-spacing: .02em; }
-h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
+/* The logo's stripes: thin and wide bars with even gaps */
+.mark { display: flex; gap: 4px; height: 44px; direction: ltr; } /* same order as on the logo */
+.mark i { display: block; width: 4px; }
+.mark i:nth-child(1) { background: var(--s1); }
+.mark i:nth-child(2) { background: var(--s2); width: 9px; }
+.mark i:nth-child(3) { background: var(--s3); width: 6px; }
+.mark i:nth-child(4) { background: var(--s4); }
+.mark i:nth-child(5) { background: var(--s5); }
+.eyebrow { margin: 0; color: color-mix(in srgb, var(--brand-ink) 78%, transparent); font-size: 12.5px; letter-spacing: .02em; }
+h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color: var(--brand-ink); }
+.theme-btn {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--brand-ink) 35%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--brand-ink);
+}
+.theme-btn:hover { background: color-mix(in srgb, var(--brand-ink) 14%, transparent); }
+.theme-btn svg { width: 18px; height: 18px; }
+.theme-btn .sun { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-btn .sun { display: block; }
+  :root:not([data-theme="light"]) .theme-btn .moon { display: none; }
+}
+:root[data-theme="dark"] .theme-btn .sun { display: block; }
+:root[data-theme="dark"] .theme-btn .moon { display: none; }
 
 /* ── Search & filters ── */
 .tools { padding: 14px 20px 0; display: grid; gap: 10px; }
@@ -130,7 +175,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
   padding: 0 6px;
   border-radius: 999px;
   background: var(--coral);
-  color: #fff;
+  color: var(--on-coral);
   font-size: 12px;
   line-height: 20px;
   text-align: center;
@@ -354,8 +399,9 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
   border-color: var(--line);
 }
 .leaflet-bar a:hover { background: var(--sunk); color: var(--ink); }
+.leaflet-bar a.leaflet-disabled { background: var(--sunk); color: var(--muted); opacity: .6; }
 .leaflet-control-layers-toggle {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237C8D8F' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M12 3 2.5 8 12 13l9.5-5z'/%3E%3Cpath d='m2.5 12 9.5 5 9.5-5'/%3E%3Cpath d='m2.5 16 9.5 5 9.5-5'/%3E%3C/svg%3E") !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237F7384' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M12 3 2.5 8 12 13l9.5-5z'/%3E%3Cpath d='m2.5 12 9.5 5 9.5-5'/%3E%3Cpath d='m2.5 16 9.5 5 9.5-5'/%3E%3C/svg%3E") !important;
   background-size: 22px 22px !important;
 }
 .leaflet-control-layers-expanded { padding: 8px 12px; direction: rtl; text-align: right; }
@@ -400,11 +446,15 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
 <div class="app">
   <aside class="side" aria-label="אירועים">
     <header class="brand">
-      <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
       <div>
         <p class="eyebrow">ברטלי · מרכזי הרכיבה</p>
         <h1>אירועי שיא</h1>
       </div>
+      <button type="button" class="theme-btn" id="themeBtn" aria-pressed="false" aria-label="מעבר למצב כהה" title="מעבר למצב כהה">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+      </button>
     </header>
 
     <div class="side-scroll" id="sideScroll">
@@ -424,7 +474,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
             </select>
           </div>
 
-          <div id="filters" class="filters" hidden>
+          <div id="filters" class="filters">
             <div class="fgrid">
               <label class="fgroup"><span class="flabel">מרכז רכיבה</span><select id="fCenter"></select></label>
               <label class="fgroup"><span class="flabel">קבוצה רוכבת</span><select id="fGroup"></select></label>
@@ -482,9 +532,10 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
   const DATA_URL = "https://script.google.com/macros/s/AKfycbwDK-MiUi_B8lEecIg5SkhNyfm5ia3jkEqMUGoVbuTIpdhwDnAGEGUsf9O4ryxt_sCgvQ/exec";
 
   const ELE_THRESHOLD = 2; // metres, same as the sheet's calculation
-  const ROUTE_COLORS = ["#E04B28", "#7B3FD1", "#D38B00", "#D6247A", "#0B8A8F", "#5C7F1E"];
-  const OVERVIEW_COLOR = "#E04B28";
-  const DIM_COLOR = "#7C8D8F";
+  // Route colors from the Bartali palettes, deepened a little so they stand out on the map
+  const ROUTE_COLORS = ["#E8505A", "#2F7FD0", "#BB29BB", "#01426A", "#D9874F", "#BF0D3E"];
+  const OVERVIEW_COLOR = "#E8505A";
+  const DIM_COLOR = "#7F7384";
   const LEVELS = [
     { key: "קל", cls: "easy" },
     { key: "בינוני", cls: "mid" },
@@ -634,7 +685,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
   L.control.layers(baseLayers, null, { position: "topleft" }).addTo(map);
   map.fitBounds(ISRAEL);
 
-  const hoverDot = L.circleMarker([0, 0], { radius: 6, color: "#14292D", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false });
+  const hoverDot = L.circleMarker([0, 0], { radius: 6, color: "#0B2D45", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false });
 
   function buildLayers(ev) {
     if (!ev.routes.length) return;
@@ -1200,6 +1251,26 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
   }
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.selected) closeDetail(true); });
   map.on("click", () => { if (state.selected) closeDetail(true); });
+
+  // ── Light / dark switch ─────────────────────────────────────────────────
+  const themeBtn = $("themeBtn");
+  const deviceDark = window.matchMedia("(prefers-color-scheme: dark)");
+  const activeTheme = () => document.documentElement.getAttribute("data-theme") || (deviceDark.matches ? "dark" : "light");
+  function showThemeButton() {
+    const dark = activeTheme() === "dark";
+    const label = dark ? "מעבר למצב בהיר" : "מעבר למצב כהה";
+    themeBtn.setAttribute("aria-pressed", String(dark));
+    themeBtn.setAttribute("aria-label", label);
+    themeBtn.title = label;
+  }
+  themeBtn.addEventListener("click", () => {
+    const next = activeTheme() === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("bartali-theme", next); } catch (e) { /* the choice lasts until the page is closed */ }
+    showThemeButton();
+  });
+  if (deviceDark.addEventListener) deviceDark.addEventListener("change", showThemeButton);
+  showThemeButton();
 
   // ── Boot ────────────────────────────────────────────────────────────────
   // The events are read from the Google Sheet (through the Apps Script Web app) on every visit.
