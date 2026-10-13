@@ -305,6 +305,8 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
 .facts { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; font-size: 14px; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; }
+.facts.links dd { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.facts.links a { color: var(--teal); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .action {
   display: inline-flex;
@@ -474,8 +476,9 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
   "use strict";
 
   // ── Settings ───────────────────────────────────────────────────────────────
-  // Paste the Apps Script Web app URL here to load live data from the sheet.
-  // While it is empty, the site shows the snapshot saved inside this file.
+  // Where the events come from: the Apps Script Web app address of the Google Sheet
+  // (it ends with /exec). Paste it between the quotes. Every visit reads the events
+  // from the sheet through this address; nothing about the events is stored in this file.
   const DATA_URL = "https://script.google.com/macros/s/AKfycbwDK-MiUi_B8lEecIg5SkhNyfm5ia3jkEqMUGoVbuTIpdhwDnAGEGUsf9O4ryxt_sCgvQ/exec";
 
   const ELE_THRESHOLD = 2; // metres, same as the sheet's calculation
@@ -604,11 +607,20 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
   const map = L.map("map", { zoomControl: false, renderer: canvas, minZoom: 7, maxBounds: [[28.5, 33], [34.2, 37]] });
   L.control.zoom({ position: "topleft", zoomInTitle: "התקרבות", zoomOutTitle: "התרחקות" }).addTo(map);
   map.attributionControl.setPrefix(false);
+  // The hiking map comes from Mapeak, the successor of Israel Hiking Map (same team, same map).
+  // While the old Israel Hiking Map address still works, any tile Mapeak can't send is taken from there.
+  const hikingMap = L.tileLayer("https://mapeak.com/Hebrew/Tiles/{z}/{x}/{y}.png", {
+    maxNativeZoom: 16, maxZoom: 18,
+    attribution: '<a href="https://mapeak.com" target="_blank" rel="noopener">Mapeak</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+  });
+  hikingMap.on("tileerror", (e) => {
+    const tile = e.tile;
+    if (tile.dataset.retried) return;
+    tile.dataset.retried = "1";
+    tile.src = tile.src.replace("https://mapeak.com/", "https://israelhiking.osm.org.il/");
+  });
   const baseLayers = {
-    "מפת טיולים": L.tileLayer("https://israelhiking.osm.org.il/Hebrew/Tiles/{z}/{x}/{y}.png", {
-      maxNativeZoom: 16, maxZoom: 18,
-      attribution: '<a href="https://israelhiking.osm.org.il" target="_blank" rel="noopener">Israel Hiking Map</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
-    }),
+    "מפת טיולים": hikingMap,
     "מפה רגילה": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
@@ -911,7 +923,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
     drawMap(false);
     showProfile(ev);
     if (ev.bounds) map.flyToBounds(ev.bounds, { ...fitPadding(), maxZoom: 15, duration: 0.6 });
-    if (push && location.hash !== "#" + ev.slug) history.pushState(null, "", "#" + ev.slug);
+    if (push && location.hash !== "#" + ev.slug) setAddress("#" + ev.slug);
     $("detailView").querySelector(".back").focus({ preventScroll: true });
   }
 
@@ -923,7 +935,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
     $("sideScroll").scrollTop = listScroll;
     hideProfile();
     drawMap(false);
-    if (push && location.hash) history.pushState(null, "", location.pathname + location.search);
+    if (push && location.hash) setAddress(location.pathname + location.search);
   }
 
   function renderDetail(ev) {
@@ -964,9 +976,35 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
       ["לינה", ev.lodging],
     ].filter(([, v]) => v);
 
-    const links = (ev.ihm || []).map((u, i, all) =>
-      `<a class="action" href="${esc(u)}" target="_blank" rel="noopener">פתיחה במפת טיולים${all.length > 1 ? " " + (i + 1) : ""}</a>`).join("");
+    // Old Israel Hiking Map share links open the same route on Mapeak
+    const links = (ev.ihm || [])
+      .map((u) => u.replace(/^https?:\/\/israelhiking\.osm\.org\.il\/share\//i, "https://mapeak.com/share/"))
+      .filter((u, i, all) => all.indexOf(u) === i)
+      .map((u, i, all) =>
+        `<a class="action" href="${esc(u)}" target="_blank" rel="noopener">פתיחה ב־Mapeak${all.length > 1 ? " " + (i + 1) : ""}</a>`).join("");
     const gpx = ev.routes.length ? `<button class="action ghost" id="gpxBtn" type="button">הורדת קובץ GPX</button>` : "";
+
+    // Every link from the sheet: safety file, the GPX files as uploaded, and map-view links
+    const web = (list) => (list || []).filter((u) => /^https?:\/\//i.test(u));
+    const gpxLabel = (u) => (/drive\.google\.com\/(drive\/)?(u\/\d+\/)?folders\//i.test(u) ? "תיקייה ב־Drive" : /drive\.google\.com|docs\.google\.com/i.test(u) ? "קובץ ב־Drive" : "קובץ GPX");
+    const linkList = (list, label) => {
+      const labels = list.map(label);
+      return list.map((u, i) => {
+        const same = labels.filter((l) => l === labels[i]).length;
+        const n = labels.slice(0, i + 1).filter((l) => l === labels[i]).length;
+        return `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(labels[i])}${same > 1 ? " " + n : ""}</a>`;
+      }).join("");
+    };
+    const linkRows = [
+      ["תיק בטיחות", web(ev.safety), () => "תיק הבטיחות"],
+      ["קובצי GPX", web(ev.gpxLinks), gpxLabel],
+      ["מיקום במפה", web(ev.mapLinks).map((u) => u.replace(/^https?:\/\/(www\.)?israelhiking\.osm\.org\.il\//i, "https://mapeak.com/")), () => "מיקום ב־Mapeak"],
+    ].filter(([, list]) => list.length);
+    const linksHtml = linkRows.length ? `
+      <div>
+        <h3 class="section-title">קישורים</h3>
+        <dl class="facts links">${linkRows.map(([k, list, label]) => `<dt>${esc(k)}</dt><dd>${linkList(list, label)}</dd>`).join("")}</dl>
+      </div>` : "";
 
     $("detailView").innerHTML = `
       <button class="btn back" type="button" id="backBtn">→ כל האירועים</button>
@@ -978,6 +1016,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
       ${statsHtml}
       ${routesHtml}
       ${facts.length ? `<dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}
+      ${linksHtml}
       ${links || gpx ? `<div class="actions">${links}${gpx}</div>` : ""}`;
 
     $("backBtn").addEventListener("click", () => closeDetail(true));
@@ -1153,24 +1192,48 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
     if (ev) select(ev, false); else closeDetail(false);
   }
   window.addEventListener("popstate", fromHash);
+
+  // The open event is kept in the address (#e-…) so a link to it can be shared.
+  // Some previews, like a file opened inside an app, don't allow that; the page works without it.
+  function setAddress(url) {
+    try { history.pushState(null, "", url); } catch (e) { /* the address can't change here */ }
+  }
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.selected) closeDetail(true); });
   map.on("click", () => { if (state.selected) closeDetail(true); });
 
   // ── Boot ────────────────────────────────────────────────────────────────
+  // The events are read from the Google Sheet (through the Apps Script Web app) on every visit.
   async function loadData() {
-    const embedded = () => JSON.parse($("site-data").textContent);
-    if (!DATA_URL) return { data: embedded(), live: false };
+    if (!DATA_URL) throw Object.assign(new Error("DATA_URL is empty"), { notConnected: true });
+    // Wait up to 25 seconds for the sheet to answer
+    const stop = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = setTimeout(() => stop && stop.abort(), 25000);
     try {
-      const res = await fetch(DATA_URL, { cache: "no-store" });
+      const res = await fetch(DATA_URL, { cache: "no-store", signal: stop ? stop.signal : undefined });
       if (!res.ok) throw new Error("HTTP " + res.status);
-      return { data: await res.json(), live: true };
-    } catch (err) {
-      console.warn("Live data failed, using the saved snapshot:", err);
-      return { data: embedded(), live: false, failed: true };
+      const data = await res.json();
+      if (!data || !Array.isArray(data.events)) throw new Error("Unexpected answer from the sheet");
+      return data;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
-  loadData().then(({ data, failed }) => {
+  function showLoadProblem(err) {
+    console.error("The events could not be loaded:", err);
+    $("summary").textContent = "";
+    const notice = $("notice");
+    notice.hidden = false;
+    if (err && err.notConnected) {
+      notice.textContent = "האתר עוד לא מחובר לגיליון: צריך להדביק את כתובת ה־Web app של הגיליון בהגדרה DATA_URL בקובץ.";
+      return;
+    }
+    notice.innerHTML = 'לא הצלחנו לטעון את האירועים מהגיליון. <button type="button" class="linkbtn" id="retryBtn">נסו שוב</button>';
+    $("retryBtn").addEventListener("click", () => location.reload());
+  }
+
+  $("summary").textContent = "טוען אירועים מהגיליון…";
+  loadData().then((data) => {
     state.events = prepare(data);
     const withStats = state.events.filter((e) => e.stats);
     const kmMax = Math.ceil(Math.max(1, ...withStats.map((e) => e.stats.km)));
@@ -1183,16 +1246,9 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; }
     drawMap(true);
 
     const gen = data.generated ? new Date(data.generated) : null;
-    $("foot").innerHTML = `${gen ? "הנתונים עודכנו ב־" + esc(longDate.format(gen)) + " · " : ""}מפת רקע: <a href="https://israelhiking.osm.org.il" target="_blank" rel="noopener">Israel Hiking Map</a>`;
-    if (failed) {
-      $("notice").hidden = false;
-      $("notice").textContent = "לא הצלחנו לטעון את הנתונים העדכניים. מוצגים הנתונים השמורים.";
-    }
+    $("foot").innerHTML = `${gen ? "הנתונים עודכנו ב־" + esc(longDate.format(gen)) + " · " : ""}מפת רקע: <a href="https://mapeak.com" target="_blank" rel="noopener">Mapeak</a>`;
     if (location.hash) fromHash();
-  }).catch((err) => {
-    console.error(err);
-    $("summary").textContent = "לא הצלחנו לטעון את האירועים. נסו לרענן את הדף.";
-  });
+  }).catch(showLoadProblem);
 })();
 </script>
 </body>
