@@ -485,7 +485,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
             <div class="fgroup"><span class="flabel">מתאים לעונה</span><div class="chips" id="fSeasons"></div></div>
             <div class="fgrid">
               <div class="fgroup"><span class="flabel">אזור</span><div class="chips" id="fRegions"></div></div>
-              <div class="fgroup"><span class="flabel">משך</span><div class="chips" id="fMulti"></div></div>
+              <label class="fgroup"><span class="flabel">משך</span><select id="fDays"></select></label>
             </div>
             <div class="range" id="rKm"></div>
             <div class="range" id="rUp"></div>
@@ -601,6 +601,25 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     return { km, up, down, cum };
   }
 
+  // How many days an event lasts: the sheet's "מספר ימים" column when it is filled in;
+  // otherwise one day, or for a multi-day event the number in its name ("3 ימים", "דו יומי",
+  // "יומיים"), else its lodging places + 1, else its number of routes, else 2.
+  function eventDays(e, routeCount) {
+    const set = Number(e.days);
+    if (set >= 1) return Math.round(set);
+    if (!e.multiDay) return 1;
+    const name = e.name || "";
+    const n = name.match(/(\d+)\s*ימים/);
+    if (n && +n[1] >= 2) return +n[1];
+    if (/תלת[\s-]?יומי/.test(name)) return 3;
+    if (/דו[\s-]?יומי|יומיים/.test(name)) return 2;
+    const nights = String(e.lodging || "").split(/[;\n]+/).map((x) => x.trim()).filter(Boolean).length;
+    if (nights >= 1) return nights + 1;
+    if (routeCount >= 2) return routeCount;
+    return 2;
+  }
+  const daysLabel = (d) => (d === 1 ? "יום אחד" : d === 2 ? "יומיים" : `${d} ימים`);
+
   function prepare(raw) {
     return raw.events.map((e, i) => {
       const date = parseDate(e.date);
@@ -630,6 +649,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
         regionShort: region,
         levelCls: level ? level.cls : "none",
         routes,
+        days: eventDays(e, routes.length),
         stats,
         statsNote,
         haystack: [e.name, e.center, e.staff, e.lodging, (e.groups || []).join(" ")].join(" ").toLowerCase(),
@@ -649,7 +669,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
   };
   const freshFilters = () => ({
     q: "", center: "", group: "", year: "", audience: "",
-    levels: new Set(), seasons: new Set(), regions: new Set(), multi: "",
+    level: "", seasons: new Set(), regions: new Set(), days: "",
     km: state.bounds.km.slice(), up: state.bounds.up.slice(), routesOnly: false,
   });
 
@@ -768,11 +788,10 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     if (f.group && !(ev.groups || []).includes(f.group)) return false;
     if (f.year && ev.year !== f.year) return false;
     if (f.audience && ev.audience !== f.audience) return false;
-    if (f.levels.size && !f.levels.has(ev.level)) return false;
+    if (f.level && ev.level !== f.level) return false;
     if (f.seasons.size && !(ev.seasons || []).some((s) => f.seasons.has(s))) return false;
     if (f.regions.size && !f.regions.has(ev.regionShort)) return false;
-    if (f.multi === "one" && ev.multiDay) return false;
-    if (f.multi === "multi" && !ev.multiDay) return false;
+    if (f.days && ev.days !== f.days) return false;
     if (f.routesOnly && !ev.routes.length) return false;
     const kmFull = f.km[0] <= state.bounds.km[0] && f.km[1] >= state.bounds.km[1];
     const upFull = f.up[0] <= state.bounds.up[0] && f.up[1] >= state.bounds.up[1];
@@ -784,8 +803,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
 
   function activeFilterCount(f) {
     let n = 0;
-    ["center", "group", "year", "audience", "multi"].forEach((k) => { if (f[k]) n++; });
-    n += f.levels.size ? 1 : 0;
+    ["center", "group", "year", "audience", "level", "days"].forEach((k) => { if (f[k]) n++; });
     n += f.seasons.size ? 1 : 0;
     n += f.regions.size ? 1 : 0;
     if (f.km[0] > state.bounds.km[0] || f.km[1] < state.bounds.km[1]) n++;
@@ -869,19 +887,21 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
       $(id).addEventListener("change", (e) => { state.f[k] = e.target.value; apply(true); });
     });
 
+    // Technical level: one at a time. Choosing another replaces it; choosing it again clears it.
     chipGroup($("fLevels"), LEVELS.map((l) => ({ label: l.key, value: l.key, icon: `<span class="blaze ${l.cls}" aria-hidden="true"></span>` })), (it, b) => {
-      toggleSet(state.f.levels, it.value, b);
+      const on = state.f.level !== it.value;
+      state.f.level = on ? it.value : "";
+      $("fLevels").querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", "false"));
+      b.setAttribute("aria-pressed", String(on));
+      apply(true);
     });
     const seasonsInData = SEASONS.filter((s) => ev.some((e) => (e.seasons || []).includes(s)));
     chipGroup($("fSeasons"), seasonsInData.map((s) => ({ label: s, value: s })), (it, b) => toggleSet(state.f.seasons, it.value, b));
     chipGroup($("fRegions"), [{ label: "צפון", value: "צפון" }, { label: "דרום", value: "דרום" }], (it, b) => toggleSet(state.f.regions, it.value, b));
-    chipGroup($("fMulti"), [{ label: "יום אחד", value: "one" }, { label: "רב יומי", value: "multi" }], (it, b) => {
-      const on = state.f.multi !== it.value;
-      state.f.multi = on ? it.value : "";
-      $("fMulti").querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", "false"));
-      b.setAttribute("aria-pressed", String(on));
-      apply(true);
-    });
+    // Duration: every number of days that appears in the events
+    const dayCounts = uniq(ev.map((e) => e.days)).sort((a, b) => a - b);
+    $("fDays").innerHTML = `<option value="">הכול</option>` + dayCounts.map((d) => `<option value="${d}">${esc(daysLabel(d))}</option>`).join("");
+    $("fDays").addEventListener("change", (e) => { state.f.days = e.target.value ? Number(e.target.value) : ""; apply(true); });
 
     dualRange($("rKm"), "מרחק רכיבה", "ק״מ", 1, "km");
     dualRange($("rUp"), "טיפוס מצטבר", "מ׳", 50, "up");
@@ -912,7 +932,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
   function resetFilters() {
     state.f = freshFilters();
     $("q").value = "";
-    ["fCenter", "fGroup", "fYear", "fAudience"].forEach((id) => { $(id).value = ""; });
+    ["fCenter", "fGroup", "fYear", "fAudience", "fDays"].forEach((id) => { $(id).value = ""; });
     document.querySelectorAll("#filters .chip").forEach((c) => c.setAttribute("aria-pressed", "false"));
     $("fRoutesOnly").checked = false;
     $("rKm").reset();
@@ -936,7 +956,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
         ? `<span class="km num">${fmtKm(e.stats.km)} ק״מ</span><span class="num">↑${fmtM(e.stats.up)} מ׳</span>`
         : "";
       const tags = [
-        e.multiDay ? `<span class="card-tag">רב יומי</span>` : "",
+        e.days > 1 ? `<span class="card-tag">${esc(daysLabel(e.days))}</span>` : "",
         e.routes.length ? "" : `<span class="card-tag muted">ללא מסלול במפה</span>`,
       ].join(" ");
       return `<li><button class="card" data-idx="${e.idx}">
@@ -995,7 +1015,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     const tags = [
       level ? `<span class="tag"><span class="blaze ${level.cls}" aria-hidden="true"></span>${esc(level.key)}</span>` : "",
       ...(ev.groups || []).map((g) => `<span class="tag">${esc(g)}</span>`),
-      ev.multiDay ? `<span class="tag">רב יומי</span>` : "",
+      ev.days > 1 ? `<span class="tag">${esc(daysLabel(ev.days))}</span>` : "",
       ...(ev.seasons || []).map((s) => `<span class="tag">${esc(s)}</span>`),
       ev.regionShort ? `<span class="tag">${esc(ev.region)}</span>` : "",
     ].join("");
