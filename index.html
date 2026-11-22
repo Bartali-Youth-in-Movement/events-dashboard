@@ -236,7 +236,9 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
 }
 .chip[aria-pressed="true"] { background: var(--teal); border-color: var(--teal); color: var(--on-teal); }
 .chip[aria-pressed="true"] .blaze { outline: 2px solid var(--surface); outline-offset: 1px; }
-.check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+/* "Only events with a route on the map": bold and a little bigger, so it isn't missed */
+.check { display: inline-flex; align-items: center; gap: 10px; font-size: 15.5px; font-weight: 700; cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--teal); cursor: pointer; }
 
 /* Dual range */
 .range { display: grid; gap: 4px; }
@@ -652,7 +654,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
   const REGIONS_URL = "regions.geojson";
   // Multi-day events: put their routes in riding order (see "Riding order" below). Off for now;
   // adding ?order=auto to the page address shows it without switching it on for everyone.
-  const AUTO_ORDER = false;
+  const AUTO_ORDER = true;
   const autoOrder = AUTO_ORDER || /[?&]order=auto(?:&|$)/.test(location.search);
 
   const ELE_THRESHOLD = 2; // metres, same as the sheet's calculation
@@ -991,7 +993,8 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
       return {
         ...e,
         idx: i,
-        slug: "e-" + String(e.id).replace(/[^A-Za-z0-9]/g, "").slice(0, 8),
+        slug: String(e.id), // the Submission ID: the event's address on the website (#…)
+        oldSlug: "e-" + String(e.id).replace(/[^A-Za-z0-9]/g, "").slice(0, 8), // how addresses looked before
         dateObj: date,
         year: schoolYear(date),
         geo,
@@ -1682,7 +1685,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     drawMap(false);
     showProfile(ev);
     if (ev.bounds) map.flyToBounds(ev.bounds, { ...fitPadding(), maxZoom: 15, duration: 0.6 });
-    if (push && location.hash !== "#" + ev.slug) setAddress("#" + ev.slug);
+    if (push && location.hash !== hashOf(ev)) setAddress(hashOf(ev));
     $("detailView").querySelector(".back").focus({ preventScroll: true });
   }
 
@@ -1960,14 +1963,20 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
   }
 
   // ── Routing by #hash ────────────────────────────────────────────────────
+  const hashOf = (ev) => "#" + encodeURIComponent(ev.slug);
   function fromHash() {
-    const slug = location.hash.slice(1);
-    const ev = slug && state.events.find((e) => e.slug === slug);
+    let key = location.hash.slice(1);
+    try { key = decodeURIComponent(key); } catch (e) { /* keep it as it is */ }
+    const ev = key && (state.events.find((e) => e.slug === key) || state.events.find((e) => e.oldSlug === key));
+    // A link in the old form (#e-…) opens the event, and the address switches to the Submission ID
+    if (ev && key !== ev.slug) {
+      try { history.replaceState(null, "", location.pathname + location.search + hashOf(ev)); } catch (e) { /* the address can't change here */ }
+    }
     if (ev) select(ev, false); else closeDetail(false);
   }
   window.addEventListener("popstate", fromHash);
 
-  // The open event is kept in the address (#e-…) so a link to it can be shared.
+  // The open event is kept in the address (#<Submission ID>) so a link to it can be shared.
   // Some previews, like a file opened inside an app, don't allow that; the page works without it.
   function setAddress(url) {
     try { history.pushState(null, "", url); } catch (e) { /* the address can't change here */ }
