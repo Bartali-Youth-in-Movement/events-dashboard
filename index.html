@@ -47,6 +47,7 @@
   /* The regions map: sea, the countries around, the regions (normal / pointed at / no events) */
   --sea: #D6E4EE; --land: #EEF0EA; --land-line: #C2CBD1;
   --region: #F6EFD3; --region-line: #FFFFFF; --region-hot: #FFD6CF; --region-empty: #ECE9E1;
+  --veil: #FFFFFF;          /* the spotlight: covers the map outside the chosen region */
   --shadow: 0 1px 2px rgb(1 66 106 / .08), 0 10px 28px rgb(1 66 106 / .12);
   --f-display: "Secular One", "Arial Hebrew", "Noto Sans Hebrew", sans-serif;
   --f-body: "IBM Plex Sans Hebrew", "Arial Hebrew", "Noto Sans Hebrew", system-ui, sans-serif;
@@ -66,6 +67,7 @@
     --route-quiet: #9DB0C2; --halo: #00263A;
     --sea: #031C2A; --land: #0B3147; --land-line: #1A4A63;
     --region: #134662; --region-line: #00263A; --region-hot: #5C2B47; --region-empty: #0D3A50;
+    --veil: #00263A;
     --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px rgb(0 0 0 / .4);
     color-scheme: dark;
   }
@@ -79,6 +81,7 @@
   --route-quiet: #9DB0C2; --halo: #00263A;
   --sea: #031C2A; --land: #0B3147; --land-line: #1A4A63;
   --region: #134662; --region-line: #00263A; --region-hot: #5C2B47; --region-empty: #0D3A50;
+  --veil: #00263A;
   --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 28px rgb(0 0 0 / .4);
   color-scheme: dark;
 }
@@ -467,6 +470,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
 }
 .rlabel .n { min-width: 16px; padding: 0 5px; border-radius: 999px; background: var(--sunk); color: var(--ink); font-size: 11.5px; font-weight: 500; text-align: center; }
 .rlabel-icon.is-hover .rlabel { border-color: var(--teal); background: var(--surface); }
+.rlabel-icon.is-dim .rlabel { opacity: .6; }
 .rlabel.zero { font-weight: 500; color: var(--muted); }
 .rlabel.zero .n { background: none; color: var(--muted); }
 .z-small .rlabel { gap: 4px; padding: 1px 7px; font-size: 11.5px; }
@@ -492,6 +496,12 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
 .region-box .rb-btn { padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
 .region-box .rb-btn:hover { border-color: var(--muted); }
 .summary .where { color: var(--ink); font-weight: 600; }
+
+/* A route's own GPX download, next to it in the list */
+.route-row { display: flex; align-items: center; gap: 4px; }
+.route-row .route { flex: 1; min-width: 0; }
+.route-gpx { flex: none; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--teal); font: 500 11.5px var(--f-data); }
+.route-gpx:hover { border-color: var(--teal); }
 
 /* ── Phone ── */
 @media (max-width: 820px) {
@@ -637,10 +647,15 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
 
   // Israel's geographical regions: a GeoJSON file next to this page (see "Regions" below)
   const REGIONS_URL = "regions.geojson";
+  // Multi-day events: put their routes in riding order (see "Riding order" below). Off for now;
+  // adding ?order=auto to the page address shows it without switching it on for everyone.
+  const AUTO_ORDER = true;
+  const autoOrder = AUTO_ORDER || /[?&]order=auto(?:&|$)/.test(location.search);
 
   const ELE_THRESHOLD = 2; // metres, same as the sheet's calculation
   // Route colors from the Bartali palettes, deepened a little so they stand out on the map
-  const ROUTE_COLORS = ["#E8505A", "#2F7FD0", "#BB29BB", "#01426A", "#D9874F", "#BF0D3E"];
+  // (the 4th is teal, so no route looks like the navy outline of a region)
+  const ROUTE_COLORS = ["#E8505A", "#2F7FD0", "#BB29BB", "#0E9384", "#D9874F", "#BF0D3E"];
   const OVERVIEW_COLOR = "#E8505A"; // routes that fit the current choice
   const LEVELS = [
     { key: "קל", cls: "easy" },
@@ -714,7 +729,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
   // How many days an event lasts: the sheet's "מספר ימים" column when it is filled in;
   // otherwise one day, or for a multi-day event the number in its name ("3 ימים", "דו יומי",
   // "יומיים"), else its lodging places + 1, else its number of routes, else 2.
-  function eventDays(e, routeCount) {
+  function explicitDays(e) {
     const set = Number(e.days);
     if (set >= 1) return Math.round(set);
     if (!e.multiDay) return 1;
@@ -725,6 +740,11 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     if (/דו[\s-]?יומי|יומיים/.test(name)) return 2;
     const nights = String(e.lodging || "").split(/[;\n]+/).map((x) => x.trim()).filter(Boolean).length;
     if (nights >= 1) return nights + 1;
+    return 0;
+  }
+  function eventDays(e, routeCount) {
+    const days = explicitDays(e);
+    if (days) return days;
     if (routeCount >= 2) return routeCount;
     return 2;
   }
@@ -820,12 +840,135 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     return Object.keys(km).filter((id) => km[id] >= 2 || km[id] >= total * 0.25).sort((a, b) => km[b] - km[a]);
   }
 
+  // ── Riding order of a multi-day event's routes ──────────────────────────
+  // The routes of a multi-day event come in the order they were submitted, which isn't always the
+  // riding order. orderRoutes() works out the riding order from the routes themselves:
+  //   names – every route's name has its day number ("יום 2", "day 3", "יום ב׳")
+  //   times – every route was recorded on the ride (start and end times from its GPX points,
+  //           published by the Apps Script), within ORDER_TIME_DAYS, one after the other
+  //           without overlapping: they go by start time
+  //   chain – the routes link end to start (each day starts where the previous one ended,
+  //           within ORDER_JOIN_KM), in exactly one way. Routes that don't link go last.
+  //   home  – one route starts at the riding centre's usual starting point; after it, each next
+  //           route is the one starting clearly nearest to where the previous one ended
+  //   kept  – none of these decides it: the submitted order is kept
+  const ORDER_JOIN_KM = 3;   // a day "starts where the previous one ended" within this distance
+  const ORDER_HOME_KM = 8;   // "starts at the riding centre" within this distance
+  const ORDER_NEXT_KM = 30;  // the next day starts at most this far from where the last one ended…
+  const ORDER_CLEAR_KM = 5;  // …and at least this much nearer than any other route
+  const ORDER_TIME_DAYS = 10; // recorded times of one event's routes lie within this many days
+
+  function dayNumber(name) {
+    const s = String(name || "");
+    const n = s.match(/(?:יום|day|d)\s*[-–_.]?\s*(\d{1,2})(?!\d)/i);
+    if (n) return +n[1];
+    const h = s.match(/יום\s*([א-י])\s*['׳"״]?(?=\s|$|[-–_.,)])/);
+    return h ? "אבגדהוזחטי".indexOf(h[1]) + 1 : 0;
+  }
+
+  function orderRoutes(routes, home) {
+    const n = routes.length;
+    const ids = routes.map((_, i) => i);
+    if (n < 2) return { order: ids, how: "single" };
+    const days = routes.map((r) => dayNumber(r.name));
+    if (days.every((d) => d > 0) && new Set(days).size === n) return { order: ids.slice().sort((a, b) => days[a] - days[b]), how: "names" };
+
+    // Recorded times. Routes ridden at the same time (overlapping) are parallel groups, not days.
+    const when = routes.map((r, i) => ({ i, s: Date.parse(r.start), e: Date.parse(r.end) }));
+    if (when.every((w) => isFinite(w.s) && isFinite(w.e) && w.e >= w.s)) {
+      when.sort((a, b) => a.s - b.s);
+      const spread = when[n - 1].s - when[0].s <= ORDER_TIME_DAYS * 864e5;
+      const oneAfterAnother = when.every((w, k) => k === 0 || w.s >= when[k - 1].e);
+      if (spread && oneAfterAnother) return { order: when.map((w) => w.i), how: "times" };
+    }
+
+    const first = (i) => routes[i].pts[0], last = (i) => routes[i].pts[routes[i].pts.length - 1];
+    const gap = ids.map((i) => ids.map((j) => (i === j ? Infinity : hav(last(i), first(j)))));
+
+    // The longest chains of routes joined end to start
+    if (n <= 9) {
+      let best = [], bestLen = 0;
+      const grow = (chain, used) => {
+        let longer = false;
+        for (const j of ids) {
+          if (used[j] || gap[chain[chain.length - 1]][j] > ORDER_JOIN_KM) continue;
+          longer = true;
+          used[j] = true; chain.push(j);
+          grow(chain, used);
+          chain.pop(); used[j] = false;
+        }
+        if (!longer) {
+          if (chain.length > bestLen) { bestLen = chain.length; best = [chain.slice()]; }
+          else if (chain.length === bestLen) best.push(chain.slice());
+        }
+      };
+      ids.forEach((i) => { const used = ids.map((j) => j === i); grow([i], used); });
+      if (bestLen >= Math.max(2, Math.ceil(n / 2)) && best.length === 1) {
+        const chain = best[0];
+        return { order: chain.concat(ids.filter((i) => !chain.includes(i))), how: "chain", extra: ids.filter((i) => !chain.includes(i)) };
+      }
+    }
+
+    // From the riding centre's usual starting point
+    if (home) {
+      const atHome = ids.filter((i) => hav(home, first(i)) <= ORDER_HOME_KM);
+      if (atHome.length === 1) {
+        const order = [atHome[0]];
+        const left = new Set(ids.filter((i) => i !== atHome[0]));
+        while (left.size) {
+          const from = order[order.length - 1];
+          const next = [...left].map((j) => [j, gap[from][j]]).sort((a, b) => a[1] - b[1]);
+          if (next[0][1] > ORDER_NEXT_KM || (next.length > 1 && next[1][1] - next[0][1] < ORDER_CLEAR_KM)) break;
+          order.push(next[0][0]);
+          left.delete(next[0][0]);
+        }
+        if (!left.size) return { order, how: "home" };
+      }
+    }
+    return { order: ids, how: "kept" };
+  }
+
+  // Each riding centre's usual starting point: where routes of at least 3 of its events start
+  // (within 3 km of each other). Centres without one simply don't use the "home" rule.
+  function centreHomes(events) {
+    const byCentre = {};
+    events.forEach((e) => {
+      if (!e.center) return;
+      (byCentre[e.center] = byCentre[e.center] || []).push((e.routes || []).filter((r) => r.pts && r.pts.length > 1).map((r) => r.pts[0]));
+    });
+    const homes = {};
+    Object.entries(byCentre).forEach(([centre, starts]) => {
+      let best = null, bestCount = 0;
+      starts.flat().forEach((c) => {
+        const count = starts.filter((list) => list.some((p) => hav(c, p) <= 3)).length;
+        if (count > bestCount) { bestCount = count; best = c; }
+      });
+      if (bestCount >= 3) {
+        const near = starts.flat().filter((p) => hav(best, p) <= 3);
+        homes[centre] = [near.reduce((a, p) => a + p[0], 0) / near.length, near.reduce((a, p) => a + p[1], 0) / near.length];
+      }
+    });
+    return homes;
+  }
+
   function prepare(raw) {
+    // Each riding centre's usual starting point, for putting multi-day routes in riding order
+    const homes = autoOrder ? centreHomes(raw.events) : {};
     return raw.events.map((e, i) => {
       const date = parseDate(e.date);
-      const routes = (e.routes || []).filter((r) => r.pts && r.pts.length > 1).map((r, k) => {
+      let list = (e.routes || []).filter((r) => r.pts && r.pts.length > 1);
+      // A multi-day event's routes in riding order
+      let ordered = false;
+      if (autoOrder && e.multiDay && list.length > 1) {
+        const res = orderRoutes(list, homes[e.center]);
+        ordered = res.how !== "kept";
+        list = res.order.map((k) => list[k]);
+      }
+      // In riding order, with as many routes as days: unnamed routes are named by their day
+      const dayNames = ordered && explicitDays(e) === list.length;
+      const routes = list.map((r, k) => {
         const s = routeStats(r.pts);
-        return { name: r.name || `מסלול ${k + 1}`, named: !!r.name, pts: r.pts, color: ROUTE_COLORS[k % ROUTE_COLORS.length], ...s };
+        return { name: r.name || (dayNames ? `יום ${k + 1}` : `מסלול ${k + 1}`), named: !!r.name, pts: r.pts, color: ROUTE_COLORS[k % ROUTE_COLORS.length], ...s };
       });
       const geo = eventRegions(routes);
       let stats = null, statsNote = "";
@@ -847,6 +990,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
         dateObj: date,
         year: schoolYear(date),
         geo,
+        ordered,
         levelCls: level ? level.cls : "none",
         routes,
         days: eventDays(e, routes.length),
@@ -863,6 +1007,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     filtered: [],
     selected: null,
     focus: 0,
+    picked: false, // one route of the open event was picked: the others fade
     sort: "new",
     bounds: { km: [0, 0], up: [0, 0] },
     f: null,
@@ -952,6 +1097,31 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
   const backdrop = L.layerGroup();
   const backdropShapes = [];
   let hoverGeo = "";
+
+  // ── Spotlight ──
+  // On the regular map, the chosen region (or the regions an open event passes through) stays clear,
+  // the rest of the map is covered with a soft veil, and a navy line with a white halo marks the edge.
+  // The map underneath is light in both themes, so the outline is the same in both.
+  map.createPane("veil").style.zIndex = 300;   // over the map tiles, under the routes
+  map.createPane("focus").style.zIndex = 390;
+  const FOCUS_LINE = "#01426A", FOCUS_HALO = "#FFFFFF";
+  const WORLD = [[15, 20], [15, 50], [45, 50], [45, 20]];
+  const veil = L.polygon([WORLD], { pane: "veil", renderer: L.svg({ pane: "veil" }), interactive: false, stroke: false, fillOpacity: 0.55 });
+  const focusRenderer = L.svg({ pane: "focus" });
+  const focusHalo = L.polygon([], { pane: "focus", renderer: focusRenderer, interactive: false, fill: false, color: FOCUS_HALO, weight: 7, opacity: 0.9 });
+  const focusLine = L.polygon([], { pane: "focus", renderer: focusRenderer, interactive: false, fill: false, color: FOCUS_LINE, weight: 3, opacity: 1 });
+  function showFocus() {
+    const ids = state.view !== "map" || !state.f ? [] : state.selected ? state.selected.geo : state.f.geo ? [state.f.geo] : [];
+    const rings = ids.filter((id) => regionById[id]).flatMap((id) => regionById[id].poly.map((part) => part[0]));
+    const layers = [veil, focusHalo, focusLine];
+    if (!rings.length) { layers.forEach((l) => { if (map.hasLayer(l)) map.removeLayer(l); }); return; }
+    veil.setLatLngs([WORLD, ...rings]);
+    focusHalo.setLatLngs(rings.map((r) => [r]));
+    focusLine.setLatLngs(rings.map((r) => [r]));
+    veil.setStyle({ fillColor: cssColor("--veil") });
+    layers.forEach((l) => { if (!map.hasLayer(l)) l.addTo(map); });
+    focusLine.bringToFront();
+  }
 
   function drawGeography() {
     const renderers = { land: L.svg({ pane: "land" }), water: L.svg({ pane: "water" }), regions: L.svg({ pane: "regions" }) };
@@ -1067,24 +1237,21 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
 
   function styleRegions() {
     if (!REGIONS.length) return;
-    const fill = cssColor("--region"), hot = cssColor("--region-hot"), empty = cssColor("--region-empty"), line = cssColor("--region-line"), accent = cssColor("--teal");
+    const fill = cssColor("--region"), hot = cssColor("--region-hot"), empty = cssColor("--region-empty"), line = cssColor("--region-line");
     const geo = state.f ? state.f.geo : "";
     // Lit up: the region under the pointer, or the regions of the event pointed at in the list
     const lit = new Set(state.view === "regions" && hoverEv ? hoverEv.geo : []);
     if (hoverGeo) lit.add(hoverGeo);
     REGIONS.forEach((r) => {
-      let st;
-      if (state.view === "regions") {
-        st = { stroke: true, color: line, weight: 1.4, opacity: 1, dashArray: null, fill: true, fillOpacity: 1,
-          fillColor: lit.has(r.id) ? hot : state.f && !r.count ? empty : fill };
-      } else if (r.id === geo) {
-        st = { stroke: true, color: accent, weight: 2.5, opacity: state.selected ? 0.35 : 0.9, dashArray: "7 6", fill: true, fillColor: accent, fillOpacity: state.selected ? 0 : 0.05 };
-      } else {
-        st = { stroke: false, fill: false };
-      }
-      r.shape.setStyle(st);
+      // On the regions map; on the regular map the spotlight shows the chosen region instead
+      const dim = lit.size > 0 && !lit.has(r.id);
+      r.shape.setStyle(state.view === "regions"
+        ? { stroke: true, color: line, weight: 1.4, opacity: 1, fill: true, fillOpacity: dim ? 0.5 : 1,
+            fillColor: lit.has(r.id) ? hot : state.f && !r.count ? empty : fill }
+        : { stroke: false, fill: false });
       r.button.setAttribute("aria-pressed", String(geo === r.id));
       r.marker.getElement().classList.toggle("is-hover", lit.has(r.id));
+      r.marker.getElement().classList.toggle("is-dim", dim);
     });
     layoutLabels();
   }
@@ -1196,8 +1363,9 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     ev.lines.forEach((l, k) => {
       if (look === "open") {
         const focused = ev.routes.length > 1 && state.focus === k;
-        l.line.setStyle({ color: ev.routes[k].color, weight: focused ? 6 : 4.5, opacity: 0.95 });
-        l.casing.setStyle({ color: halo, weight: focused ? 9 : 7.5, opacity: 0.9 });
+        const faded = ev.routes.length > 1 && state.picked && !focused;
+        l.line.setStyle({ color: ev.routes[k].color, weight: focused ? 6 : faded ? 3.5 : 4.5, opacity: faded ? 0.4 : 0.95 });
+        l.casing.setStyle({ color: halo, weight: focused ? 9 : faded ? 5.5 : 7.5, opacity: faded ? 0.35 : 0.9 });
       } else if (look === "other") {
         l.line.setStyle({ color: quiet, weight: 2.5, opacity: 0.45 });
         l.casing.setStyle({ color: halo, weight: 4, opacity: 0.4 });
@@ -1254,6 +1422,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     });
     styleRoutes();
     styleRegions();
+    showFocus();
     renderRegionBox();
     // All the routes (no region): follow the filters
     if (fit && onMap && !state.selected && !state.f.geo) {
@@ -1483,6 +1652,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     document.querySelectorAll(".card.is-hover").forEach((c) => c.classList.remove("is-hover"));
     state.focus = ev.routes.length ? ev.routes.reduce((best, r, k, all) => (r.km > all[best].km ? k : best), 0) : 0;
     if (ev.multiDay) state.focus = 0;
+    state.picked = false;
     renderDetail(ev);
     $("listView").hidden = true;
     $("detailView").hidden = false;
@@ -1532,15 +1702,18 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
       </div>${ev.statsNote ? `<p class="stats-note">${esc(ev.statsNote)}</p>` : ""}`
       : `<p class="no-route">לאירוע הזה עוד לא נשמר מסלול במפה.</p>`;
 
+    // With the riding order on, each route also gets its own GPX download
+    const perRoute = autoOrder && ev.routes.length > 1;
+    const pressed = (k) => state.focus === k && (state.picked || !ev.multiDay);
     const routesHtml = ev.routes.length > 1 ? `
       <div>
-        <h3 class="section-title">${ev.multiDay ? "המסלולים לפי הסדר" : "המסלולים באירוע"}</h3>
+        <h3 class="section-title">${ev.multiDay && (!autoOrder || ev.ordered) ? "המסלולים לפי הסדר" : "המסלולים באירוע"}</h3>
         <ul class="routes">${ev.routes.map((r, k) => `
-          <li><button class="route" data-k="${k}" aria-pressed="${state.focus === k}">
+          <li class="route-row"><button class="route" data-k="${k}" aria-pressed="${pressed(k)}">
             <span class="swatch" style="background:${r.color}"></span>
             <span>${esc(r.name)}</span>
             <span class="rs num">${fmtKm(r.km)} ק״מ · ↑${fmtM(r.up)}</span>
-          </button></li>`).join("")}
+          </button>${perRoute ? `<button type="button" class="route-gpx" data-gpx="${k}" title="הורדת קובץ GPX של ${esc(r.name)}" aria-label="הורדת קובץ GPX של ${esc(r.name)}">GPX</button>` : ""}</li>`).join("")}
         </ul>
       </div>` : "";
 
@@ -1601,15 +1774,19 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
       b.addEventListener("mouseenter", () => ev.lines[+b.dataset.k] && ev.lines[+b.dataset.k].line.setStyle({ weight: 7 }));
       b.addEventListener("mouseleave", () => styleRoutes());
     });
+    $("detailView").querySelectorAll(".route-gpx").forEach((b) => b.addEventListener("click", () => downloadGpx(ev, +b.dataset.gpx)));
   }
 
+  // Picking a route of the event puts it in front and fades the others; picking it again shows all
   function focusRoute(k, zoom) {
     const ev = state.selected;
     if (!ev || !ev.routes[k]) return;
+    const again = state.picked && state.focus === k;
     state.focus = k;
-    $("detailView").querySelectorAll(".route").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.k === k)));
+    state.picked = !again && ev.routes.length > 1;
+    $("detailView").querySelectorAll(".route").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.k === k && (state.picked || !ev.multiDay))));
     styleRoutes();
-    if (zoom && ev.routes.length > 1) map.flyToBounds(ev.lines[k].line.getBounds(), { ...fitPadding(), maxZoom: 15, duration: 0.5 });
+    if (zoom && ev.routes.length > 1) map.flyToBounds(again ? ev.bounds : ev.lines[k].line.getBounds(), { ...fitPadding(), maxZoom: 15, duration: 0.5 });
     drawProfile();
   }
 
@@ -1678,9 +1855,9 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     order.forEach(({ r, k, off }) => {
       let d = "";
       for (let i = 0; i < r.pts.length; i++) d += (i ? "L" : "M") + X(off + r.cum[i]).toFixed(1) + "," + Y(r.pts[i][2]).toFixed(1);
-      const focused = concat || k === state.focus;
+      const focused = concat ? !state.picked || k === state.focus : k === state.focus;
       if (concat || ev.routes.length === 1) {
-        out += `<path d="${d}L${X(off + r.km).toFixed(1)},${Y(yMin)}L${X(off).toFixed(1)},${Y(yMin)}Z" fill="${r.color}" fill-opacity="0.16"/>`;
+        out += `<path d="${d}L${X(off + r.km).toFixed(1)},${Y(yMin)}L${X(off).toFixed(1)},${Y(yMin)}Z" fill="${r.color}" fill-opacity="${focused ? 0.16 : 0.06}"/>`;
       }
       out += `<path d="${d}" fill="none" stroke="${r.color}" stroke-width="${focused ? 2 : 1.4}" stroke-opacity="${focused ? 1 : 0.55}" stroke-linejoin="round"/>`;
       if (concat && k > 0) {
@@ -1738,14 +1915,15 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
   });
 
   // ── GPX download ────────────────────────────────────────────────────────
-  function downloadGpx(ev) {
+  // The whole event, or only one of its routes
+  function downloadGpx(ev, only) {
     const x = (s) => String(s).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]));
     const parts = [
       '<?xml version="1.0" encoding="UTF-8"?>',
       '<gpx version="1.1" creator="Bartali events map" xmlns="http://www.topografix.com/GPX/1/1">',
       `<metadata><name>${x(ev.name)}</name></metadata>`,
     ];
-    ev.routes.forEach((r) => {
+    (only == null ? ev.routes : [ev.routes[only]]).forEach((r) => {
       parts.push(`<trk><name>${x(r.name)}</name><trkseg>`);
       r.pts.forEach((p) => parts.push(`<trkpt lat="${p[0]}" lon="${p[1]}"><ele>${p[2]}</ele></trkpt>`));
       parts.push("</trkseg></trk>");
@@ -1754,7 +1932,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     const blob = new Blob([parts.join("\n")], { type: "application/gpx+xml" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = ev.name.replace(/[\\/:*?"<>|]+/g, " ").trim() + ".gpx";
+    a.download = (ev.name + (only == null ? "" : " - " + ev.routes[only].name)).replace(/[\\/:*?"<>|]+/g, " ").trim() + ".gpx";
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
@@ -1798,6 +1976,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     styleGeography();
     styleRegions();
     styleRoutes();
+    showFocus();
   }
 
   // ── Boot ────────────────────────────────────────────────────────────────
