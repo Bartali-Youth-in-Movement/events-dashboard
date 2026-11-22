@@ -36,9 +36,9 @@
   --on-coral: #0B2D45;
   --coral-soft: #FFE5E3;
   --focus: #3D8FDE;
-  --easy: #2E8B57;
-  --mid: #3D8FDE;
-  --hard: #0B2D45;
+  --easy: #16A34A;          /* difficulty marks: easy, moderate, difficult */
+  --mid: #2563EB;
+  --hard: #DC2626;
   --brand-bg: #01426A;      /* the header band, like the logo */
   --brand-ink: #F1E6B2;
   --s1: #3D8FDE; --s2: #FF7276; --s3: #EBB28C; --s4: #7F7384; --s5: #F1E6B2;
@@ -61,7 +61,7 @@
   :root:not([data-theme="light"]) {
     --paper: #00263A; --surface: #032F47; --sunk: #073A55; --ink: #F3EBC9; --muted: #A8B6C4; --line: #12465F;
     --teal: #F59BBB; --on-teal: #00263A; --teal-soft: #282E5E; --coral: #BF0D3E; --on-coral: #F1E6B2; --coral-soft: #3B1A2E;
-    --focus: #F59BBB; --easy: #5CC48A; --mid: #3D8FDE; --hard: #F1E6B2;
+    --focus: #F59BBB; --easy: #4ADE80; --mid: #60A5FA; --hard: #F87171;
     --brand-bg: #001B2A; --brand-ink: #F1E6B2;
     --s1: #3D8FDE; --s2: #BF0D3E; --s3: #BB29BB; --s4: #8A2235; --s5: #F59BBB;
     --route-quiet: #9DB0C2; --halo: #00263A;
@@ -75,7 +75,7 @@
 :root[data-theme="dark"] {
   --paper: #00263A; --surface: #032F47; --sunk: #073A55; --ink: #F3EBC9; --muted: #A8B6C4; --line: #12465F;
   --teal: #F59BBB; --on-teal: #00263A; --teal-soft: #282E5E; --coral: #BF0D3E; --on-coral: #F1E6B2; --coral-soft: #3B1A2E;
-  --focus: #F59BBB; --easy: #5CC48A; --mid: #3D8FDE; --hard: #F1E6B2;
+  --focus: #F59BBB; --easy: #4ADE80; --mid: #60A5FA; --hard: #F87171;
   --brand-bg: #001B2A; --brand-ink: #F1E6B2;
   --s1: #3D8FDE; --s2: #BF0D3E; --s3: #BB29BB; --s4: #8A2235; --s5: #F59BBB;
   --route-quiet: #9DB0C2; --halo: #00263A;
@@ -324,12 +324,15 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
 .empty { margin: 24px 20px; text-align: center; color: var(--muted); }
 .empty p { margin: 0 0 10px; }
 
-/* Difficulty marks (IMBA convention: green circle, blue square, black diamond) */
-.blaze { display: inline-block; width: 13px; height: 13px; flex: none; }
-.blaze.easy { background: var(--easy); border-radius: 50%; }
-.blaze.mid { background: var(--mid); border-radius: 2px; }
-.blaze.hard { background: var(--hard); transform: rotate(45deg) scale(.82); border-radius: 1px; }
-.blaze.none { border: 1.5px dashed var(--muted); border-radius: 50%; }
+/* Difficulty marks: circles — green easy, blue moderate, red difficult */
+.blaze { display: inline-block; width: 12px; height: 12px; flex: none; border-radius: 50%; }
+.blaze.easy { background: var(--easy); }
+.blaze.mid { background: var(--mid); }
+.blaze.hard { background: var(--hard); }
+.blaze.none { border: 1.5px dashed var(--muted); }
+/* The difficulty colors, at the bottom of the map */
+.level-legend { display: flex; gap: 12px; padding: 6px 12px; border-radius: 999px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); direction: rtl; font: 12.5px/1.3 var(--f-body); }
+.level-legend > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 
 /* ── Detail ── */
 .detail { padding: 14px 20px 24px; display: grid; gap: 16px; }
@@ -649,14 +652,16 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
   const REGIONS_URL = "regions.geojson";
   // Multi-day events: put their routes in riding order (see "Riding order" below). Off for now;
   // adding ?order=auto to the page address shows it without switching it on for everyone.
-  const AUTO_ORDER = true;
+  const AUTO_ORDER = false;
   const autoOrder = AUTO_ORDER || /[?&]order=auto(?:&|$)/.test(location.search);
 
   const ELE_THRESHOLD = 2; // metres, same as the sheet's calculation
   // Route colors from the Bartali palettes, deepened a little so they stand out on the map
   // (the 4th is teal, so no route looks like the navy outline of a region)
   const ROUTE_COLORS = ["#E8505A", "#2F7FD0", "#BB29BB", "#0E9384", "#D9874F", "#BF0D3E"];
-  const OVERVIEW_COLOR = "#E8505A"; // routes that fit the current choice
+  // Routes on the regular map, by their event's difficulty (and grey when it isn't given)
+  const LEVEL_COLORS = { easy: "#16A34A", mid: "#2563EB", hard: "#DC2626", none: "#6B7785" };
+  const levelColor = (ev) => LEVEL_COLORS[ev.levelCls] || LEVEL_COLORS.none;
   const LEVELS = [
     { key: "קל", cls: "easy" },
     { key: "בינוני", cls: "mid" },
@@ -1329,6 +1334,20 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
       : `<span class="rb-name">${esc(geo ? regionById[geo].name : "כל הארץ")}</span><span class="rb-count">${geo ? count : count + " במפה"}</span><button type="button" class="rb-btn" data-act="back">→ מפת האזורים</button>`;
   }
 
+  // Which color is which difficulty: on the regular map, while no event is open
+  const Legend = L.Control.extend({
+    options: { position: "bottomleft" },
+    onAdd() {
+      const el = L.DomUtil.create("div", "level-legend");
+      el.hidden = true;
+      el.setAttribute("aria-label", "צבעי המסלולים לפי רמה טכנית");
+      el.innerHTML = LEVELS.map((l) => `<span><span class="blaze" style="background:${LEVEL_COLORS[l.cls]}" aria-hidden="true"></span>${esc(l.key)}</span>`).join("");
+      L.DomEvent.disableClickPropagation(el);
+      return el;
+    },
+  });
+  const legend = new Legend().addTo(map);
+
   // ── Routes ──────────────────────────────────────────────────────────────
   function buildLayers(ev) {
     if (!ev.routes.length) return;
@@ -1336,7 +1355,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     ev.lines = ev.routes.map((r, k) => {
       const latlngs = r.pts.map((p) => [p[0], p[1]]);
       const casing = L.polyline(latlngs, { color: "#fff", weight: 6, opacity: 0.9, interactive: false });
-      const line = L.polyline(latlngs, { color: OVERVIEW_COLOR, weight: 3.5, opacity: 0.95 });
+      const line = L.polyline(latlngs, { color: levelColor(ev), weight: 3.5, opacity: 0.95 });
       line.bindTooltip("", { sticky: true, direction: "top", className: "route-tip", offset: [0, -6] });
       line.on("tooltipopen", () => line.setTooltipContent(esc(state.selected === ev && ev.routes.length > 1 ? r.name : ev.name)));
       line.on("click", (e) => { L.DomEvent.stop(e); if (state.selected === ev) focusRoute(k, true); else select(ev, true); });
@@ -1346,7 +1365,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
       return { casing, line };
     });
     const start = ev.routes[0].pts[0];
-    ev.startDot = L.circleMarker([start[0], start[1]], { radius: 4.5, color: "#fff", weight: 2, fillColor: OVERVIEW_COLOR, fillOpacity: 1 });
+    ev.startDot = L.circleMarker([start[0], start[1]], { radius: 4.5, color: "#fff", weight: 2, fillColor: levelColor(ev), fillOpacity: 1 });
     ev.startDot.on("click", (e) => { L.DomEvent.stop(e); select(ev, true); });
     ev.startDot.bindTooltip(esc(ev.name), { direction: "top", className: "route-tip", offset: [0, -6] });
     group.addLayer(ev.startDot);
@@ -1355,7 +1374,8 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
   }
 
   // On the regular map only the routes that fit what was chosen (the region and the filters) are
-  // drawn, in the accent color. An open event shows in its own route colors, the others in grey.
+  // drawn, each in the color of its event's difficulty. An open event shows in its own route
+  // colors, the others in grey.
   let hoverEv = null;
   const lookOf = (ev) => (state.selected ? (state.selected === ev ? "open" : "other") : ev === hoverEv ? "hover" : "match");
   function paint(ev, look) {
@@ -1371,11 +1391,11 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
         l.casing.setStyle({ color: halo, weight: 4, opacity: 0.4 });
       } else {
         const big = look === "hover";
-        l.line.setStyle({ color: OVERVIEW_COLOR, weight: big ? 5.5 : 4, opacity: 0.95 });
+        l.line.setStyle({ color: levelColor(ev), weight: big ? 5.5 : 4, opacity: 0.95 });
         l.casing.setStyle({ color: halo, weight: big ? 8.5 : 6.5, opacity: 0.9 });
       }
     });
-    ev.startDot.setStyle({ color: halo, fillColor: look === "open" ? ev.routes[0].color : look === "other" ? quiet : OVERVIEW_COLOR, radius: look === "other" ? 3.5 : 4.5 });
+    ev.startDot.setStyle({ color: halo, fillColor: look === "open" ? ev.routes[0].color : look === "other" ? quiet : levelColor(ev), radius: look === "other" ? 3.5 : 4.5 });
   }
   const bringUp = (ev) => {
     ev.lines.forEach((l) => { l.casing.bringToFront(); l.line.bringToFront(); });
@@ -1424,6 +1444,7 @@ h1 { margin: 0; font: 30px/1.05 var(--f-display); letter-spacing: -.01em; color:
     styleRegions();
     showFocus();
     renderRegionBox();
+    legend.getContainer().hidden = !onMap || !!state.selected || !state.filtered.some((ev) => ev.routes.length);
     // All the routes (no region): follow the filters
     if (fit && onMap && !state.selected && !state.f.geo) {
       const b = routesBounds();
